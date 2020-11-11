@@ -1,135 +1,122 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<api xmlns="http://ws.apache.org/ns/synapse" name="ChannelAPI" context="/channels">
-    <resource methods="POST">
-        <!-- The inSequence handles the request flow -->
-        <inSequence>
-            <!-- Evaluate the JSON payload we receive and set its attributes as properties -->
-            <property name="doctorId" expression="json-eval($.doctorId)" />
-            <property name="patientId" expression="json-eval($.patientId)" />
-            <property name="date" expression="json-eval($.date)" />
-            <property name="time" expression="json-eval($.time)" />
-            <!-- Call the new system service to get Patient Information using patient id -->
-            <property name="uri.var.patientId" expression="get-property('patientId')" />
-            <call>
-                <endpoint>
-                    <http method="get" uri-template="http://localhost:8787/api/patients/{uri.var.patientId}" />
-                </endpoint>
-            </call>
-            <!-- Get the first name and last of the patient from the response received for the above request -->
-            <property name="patientFirstName" expression="json-eval($.firstName)" />
-            <property name="patientLastName" expression="json-eval($.lastName)" />
-            <property name="patientName" expression="fn:concat(get-property('patientFirstName'),' ',get-property('patientLastName'))" />
-
-            <!-- Construct the payload required for calling the ChannelService in the legacy system -->
-            <payloadFactory media-type="xml">
-                <format>
-                    <ser:createChannelRecord xmlns:ser="http://service.ewa.mcs.ucsc.cmb.ac.lk/">
-                        <doctorId xmlns="">$1</doctorId>
-                        <patientName xmlns="">$2</patientName>
-                        <date xmlns="">$3</date>
-                        <time xmlns="">$4</time>
-                    </ser:createChannelRecord>
-                </format>
-                <args>
-                    <arg expression="get-property('doctorId')" />
-                    <arg expression="get-property('patientName')" />
-                    <arg expression="get-property('date')" />
-                    <arg expression="get-property('time')" />
-                </args>
-            </payloadFactory>
-            <header name="Action" value="" />
-            <!-- Call the ChannelService to create a channel record -->
-            <call>
-                <endpoint>
-                    <address uri="http://localhost:8686/services/ChannelService" format="soap11" />
-                </endpoint>
-            </call>
-
-            <!-- Check the status code of the response to see if it caused an error -->
-            <filter source="get-property('axis2', 'HTTP_SC')" regex="500">
-                <!-- If an error has occured, respond back to the front end with the error details -->
-                <then>
-                    <log>
-                        <property name="ERROR" value="Error creating channel record" />
-                    </log>
-                    <property name="messageType" value="application/json" scope="axis2" />
-                    <property name="HTTP_SC" value="500" scope="axis2" />
-                    <respond />
-                </then>
-            </filter>
-
-            <!-- Get the channelId from the ChannelService response -->
-            <property xmlns:ns2="http://service.ewa.mcs.ucsc.cmb.ac.lk/" name="channelId"
-                expression="//ns2:createChannelRecordResponse/return/id" scope="default" type="STRING" />
-
-            <!-- Get the doctors first name from the ChannelService response -->
-            <property xmlns:ns2="http://service.ewa.mcs.ucsc.cmb.ac.lk/" name="doctorFirstName"
-                expression="//ns2:createChannelRecordResponse/return/doctor/firstName" scope="default" type="STRING" />
-
-            <!-- Get the doctors last name from the ChannelService response -->
-            <property xmlns:ns2="http://service.ewa.mcs.ucsc.cmb.ac.lk/" name="doctorLastName"
-                expression="//ns2:createChannelRecordResponse/return/doctor/lastName" scope="default" type="STRING" />
-
-            <property name="doctorName" expression="fn:concat(get-property('doctorFirstName'),' ',get-property('doctorLastName'))" />
-
-            <!-- Construct the json payload required for calling the patient history service -->
-            <payloadFactory media-type="json">
-                <format>{"channelId":"$1","patientId":"$2"}</format>
-                <args>
-                    <arg expression="get-property('channelId')" />
-                    <arg expression="get-property('patientId')" />
-                </args>
-            </payloadFactory>
-            <property name="messageType" value="application/json" scope="axis2" type="STRING" />
-
-            <!-- Call the patient history service -->
-            <send>
-                <endpoint>
-                    <http method="POST" uri-template="http://localhost:8787/api/patients/history" />
-                </endpoint>
-            </send>
-        </inSequence>
-        <!-- The outSequence handles the response flow -->
-        <outSequence>
-            <!-- Construct the final Response we are going to send back to the front end -->
-            <payloadFactory media-type="json">
-                <format>{"patientName":"$1","doctorName":"$2","date":"$3","time":"$4"}</format>
-                <args>
-                    <arg evaluator="xml" expression="get-property('patientName')" />
-                    <arg evaluator="xml" expression="get-property('doctorName')" />
-                    <arg evaluator="xml" expression="get-property('date')" />
-                    <arg evaluator="xml" expression="get-property('time')" />
-                </args>
-            </payloadFactory>
-            <property name="messageType" value="application/json" scope="axis2" />
-            <!-- Send the final response to the front end -->
-            <send />
-        </outSequence>
-    </resource>
-    <resource methods="GET" uri-template="/{doctorId}/{date}">
-        <inSequence>
-            <payloadFactory media-type="xml">
-                <format>
-                    <ser:findChannelRecordsOfDoctorOnDate xmlns:ser="http://service.ewa.mcs.ucsc.cmb.ac.lk/">
-                        <doctorId xmlns="">$1</doctorId>
-                        <date xmlns="">$2</date>
-                    </ser:findChannelRecordsOfDoctorOnDate>
-                </format>
-                <args>
-                    <arg evaluator="xml" expression="get-property('uri.var.doctorId')" />
-                    <arg evaluator="xml" expression="get-property('uri.var.date')" />
-                </args>
-            </payloadFactory>
-            <header name="Action" value="" />
-            <send>
-                <endpoint>
-                    <address uri="http://localhost:8686/services/ChannelService" format="soap11" />
-                </endpoint>
-            </send>
-        </inSequence>
-        <outSequence>
-            <property name="messageType" value="application/json" scope="axis2" type="STRING" />
-            <send />
-        </outSequence>
-    </resource>
+<api xmlns="http://ws.apache.org/ns/synapse"
+     name="ChannelAPI"
+     context="/channels">
+   <resource methods="POST">
+      <inSequence>
+         <property name="doctorId" expression="json-eval($.doctorId)"/>
+         <property name="patientId" expression="json-eval($.patientId)"/>
+         <property name="date" expression="json-eval($.date)"/>
+         <property name="time" expression="json-eval($.time)"/>
+         <property name="uri.var.patientId" expression="get-property('patientId')"/>
+         <call>
+            <endpoint key="gov:/PatientRecordEndpoint"/>
+         </call>
+         <property name="patientFirstName" expression="json-eval($.firstName)"/>
+         <property name="patientLastName" expression="json-eval($.lastName)"/>
+         <property name="patientName"
+                   expression="fn:concat(get-property('patientFirstName'),' ',get-property('patientLastName'))"/>
+         <payloadFactory media-type="xml">
+            <format>
+               <ser:createChannelRecord xmlns:ser="http://service.ewa.mcs.ucsc.cmb.ac.lk/">
+                  <doctorId xmlns="">$1</doctorId>
+                  <patientName xmlns="">$2</patientName>
+                  <date xmlns="">$3</date>
+                  <time xmlns="">$4</time>
+               </ser:createChannelRecord>
+            </format>
+            <args>
+               <arg evaluator="xml" expression="get-property('doctorId')"/>
+               <arg evaluator="xml" expression="get-property('patientName')"/>
+               <arg evaluator="xml" expression="get-property('date')"/>
+               <arg evaluator="xml" expression="get-property('time')"/>
+            </args>
+         </payloadFactory>
+         <header name="Action" value=""/>
+         <call>
+            <endpoint key="gov:/ChannelServiceEndpoint"/>
+         </call>
+         <filter source="get-property('axis2', 'HTTP_SC')" regex="500">
+            <then>
+               <log>
+                  <property name="ERROR" value="Error creating channel record"/>
+               </log>
+               <property name="messageType" value="application/json" scope="axis2"/>
+               <property name="HTTP_SC" value="500" scope="axis2"/>
+               <respond/>
+            </then>
+         </filter>
+         <property xmlns:ns2="http://service.ewa.mcs.ucsc.cmb.ac.lk/"
+                   name="channelId"
+                   expression="//ns2:createChannelRecordResponse/return/id"
+                   scope="default"
+                   type="STRING"/>
+         <property xmlns:ns2="http://service.ewa.mcs.ucsc.cmb.ac.lk/"
+                   name="doctorFirstName"
+                   expression="//ns2:createChannelRecordResponse/return/doctor/firstName"
+                   scope="default"
+                   type="STRING"/>
+         <property xmlns:ns2="http://service.ewa.mcs.ucsc.cmb.ac.lk/"
+                   name="doctorLastName"
+                   expression="//ns2:createChannelRecordResponse/return/doctor/lastName"
+                   scope="default"
+                   type="STRING"/>
+         <property name="doctorName"
+                   expression="fn:concat(get-property('doctorFirstName'),' ',get-property('doctorLastName'))"/>
+         <payloadFactory media-type="json">
+            <format>{"channelId":"$1","patientId":"$2"}</format>
+            <args>
+               <arg evaluator="xml" expression="get-property('channelId')"/>
+               <arg evaluator="xml" expression="get-property('patientId')"/>
+            </args>
+         </payloadFactory>
+         <property name="messageType"
+                   value="application/json"
+                   scope="axis2"
+                   type="STRING"/>
+         <send>
+            <endpoint key="gov:/PatientHistoryEndpoint"/>
+         </send>
+      </inSequence>
+      <outSequence>
+         <payloadFactory media-type="json">
+            <format>{"patientName":"$1","doctorName":"$2","date":"$3","time":"$4"}</format>
+            <args>
+               <arg evaluator="xml" expression="get-property('patientName')"/>
+               <arg evaluator="xml" expression="get-property('doctorName')"/>
+               <arg evaluator="xml" expression="get-property('date')"/>
+               <arg evaluator="xml" expression="get-property('time')"/>
+            </args>
+         </payloadFactory>
+         <property name="messageType" value="application/json" scope="axis2"/>
+         <send/>
+      </outSequence>
+   </resource>
+   <resource methods="GET" uri-template="/{doctorId}/{date}">
+      <inSequence>
+         <payloadFactory media-type="xml">
+            <format>
+               <ser:findChannelRecordsOfDoctorOnDate xmlns:ser="http://service.ewa.mcs.ucsc.cmb.ac.lk/">
+                  <doctorId xmlns="">$1</doctorId>
+                  <date xmlns="">$2</date>
+               </ser:findChannelRecordsOfDoctorOnDate>
+            </format>
+            <args>
+               <arg evaluator="xml" expression="get-property('uri.var.doctorId')"/>
+               <arg evaluator="xml" expression="get-property('uri.var.date')"/>
+            </args>
+         </payloadFactory>
+         <header name="Action" value=""/>
+         <send>
+            <endpoint key="gov:/ChannelServiceEndpoint"/>
+         </send>
+      </inSequence>
+      <outSequence>
+         <property name="messageType"
+                   value="application/json"
+                   scope="axis2"
+                   type="STRING"/>
+         <send/>
+      </outSequence>
+   </resource>
 </api>
